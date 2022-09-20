@@ -305,6 +305,17 @@ _count_occurrences_in_file() {
   echo "${count}"
 }
 
+# Counts the number of lines in file.
+#
+# $1 - the file to lookup
+#
+# Returns the number of lines.
+_count_lines_in_file() {
+  local file=$1
+  local count=$(grep -c ^ "${file}")
+  echo "${count}"
+}
+
 # Analyzes the provided log file with a given pattern.
 #
 # $1 - the pattern to search for
@@ -663,7 +674,11 @@ check() {
     variations_avg=( $(_calculate_variations "${averages[*]}" "${results[*]}") )
   fi
 
+  # Counting line numbers
+  local num_lines=$(_count_lines_in_file "${__sos_log_file}")
+
   # Analyzing thresholds: calculating exceeded threshold
+  # TODO: also add thresholds for ${variations}
   _log 1 "Checking for exceeded thresholds"
   local exceeded_level=$(_calculate_exceeded_threshold "${results[*]}" "${variations_avg[*]}")
   if [ -z "${exceeded_level}" ]; then
@@ -692,6 +707,7 @@ check() {
       fi
       body+=" - ${__sos_log_types[i]}: ${results[i]}${var}\n"
     done
+    body+="Number of lines: ${num_lines}\n"
     body+="\n"
     body+="Sent from: $(hostname)"
     local notification_sent=$(_send_notification "${subject}" "${body}")
