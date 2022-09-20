@@ -448,7 +448,7 @@ _notification_level_exceeded() {
 _send_notification() {
   local subject=$1
   local body=$2
-  if [ "${__sos_mail_pretend}" -eq "1" ]; then
+  if [ -z "${__sos_mail_receiver}" ] || [ "${__sos_mail_pretend}" -eq "1" ]; then
     _log 1 "Pretending to send notification to '${__sos_mail_receiver}'"
     _log 2 "------------------------------------"
     _log 2 "${subject}"
@@ -653,7 +653,6 @@ check() {
     local subject=$(echo "${mail_subject}" | sed -r "s/%environment/${environment}/g")
     subject=$(echo "${subject}" | sed -r "s/%level/${exceeded_level}/g")
     # Building body
-    # TODO: re-use function for body ?
     local body="Log file analysis results for '${__sos_log_file}':\n"
     for i in "${!__sos_log_types[@]}"; do
       local var=""
