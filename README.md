@@ -28,7 +28,7 @@ curl -L -o sos.sh https://github.com/egoettelmann/sys-obs-script/raw/master/sos.
 ```
 
 This script can be sourced to be used within your own script.
-However, if you want to use it directly (e.g. through command line), make it executable:
+However, if you want to use it directly (e.g. through command line, or as a cron job), make it executable:
 ```sh
 chmod +x sos.sh
 ```

@@ -8,7 +8,7 @@
 # TODO: OPTIONAL - add disk space check
 # TODO: OPTIONAL - add http status checks
 
-__sos_script_version="0.0.1"
+__sos_script_version="0.0.2"
 
 # Defining current folder
 __sos_current_dir="$( dirname -- "$0"; )"
@@ -93,6 +93,21 @@ _format_float() {
     prefix="0"
   fi
   echo "${prefix}${res}"
+}
+
+# Formats a variation, by adding the sign and the '%'.
+# Expects a value x100 as bash does not support float values natively.
+#
+# $1 - the number to format
+#
+# The formatted value with a dot as decimal separator.
+_format_variation() {
+  local num=$1
+  local sign=""
+  if [ "${num}" -ge "0" ]; then
+    sign="+"
+  fi
+  echo "${sign}$(_format_float ${num})%"
 }
 
 ############################################################################
@@ -246,6 +261,7 @@ _get_log_file() {
 }
 
 # Get the history of log files to analyze.
+# Current log file ${__sos_log_file} is filtered out.
 # TODO: should handle '%i' in pattern and return a list of files
 #
 # $1 - the pattern to search for
@@ -259,7 +275,16 @@ _get_log_file_history() {
   local offset=$4
   _log 0 "Retrieving pattern '${pattern}' from log files history in '${folder}'"
   local search=$(echo "${pattern}" | sed -r "s/%date/*/g")
-  echo $(_get_files "${search}" "${folder}" "${limit}" "${offset}")
+  local files=( $(_get_files "${search}" "${folder}" "${limit}" "${offset}") )
+  local filtered_files=()
+  for file in ${files[*]}; do
+    if [ "${file}" != "${__sos_log_file}" ]; then
+      filtered_files+=( "${file}" )
+    else
+      _log 0 "Ignoring '${file}' for history"
+    fi
+  done
+  echo "${filtered_files[*]}"
 }
 
 ############################################################################
@@ -319,17 +344,13 @@ _analyze_history() {
 
   # Iterating over files
   local num_files=0
-  for file in $log_file_history; do
-    if [ "${file}" != "${__sos_log_file}" ]; then
-      _log 0 "Analyzing '${file}' for history"
-      num_files=$((${num_files} + 1))
-      local result=( $(_analyze_file "${pattern}" "${file}") )
-      for i in "${!result[@]}"; do
-        history[i]=$(( ${history[i]} + ${result[i]} ))
-      done
-    else
-      _log 0 "Ignoring '${file}' for history"
-    fi
+  for file in ${files[*]}; do
+    _log 0 "Analyzing '${file}' for history"
+    num_files=$((${num_files} + 1))
+    local result=( $(_analyze_file "${pattern}" "${file}") )
+    for i in "${!result[@]}"; do
+      history[i]=$(( ${history[i]} + ${result[i]} ))
+    done
   done
   _log 0 "Analyzed '${num_files}' files for history"
 
@@ -353,22 +374,21 @@ _analyze_history() {
 # Returns the list of variations compared to the average.
 _calculate_variations() {
   local args=( $@ )
-  local size=${#args[@]}
-  local center=$(( size / 2))
-  local averages=("${args[@]:0:center}")
-  local results=("${args[@]:center}")
-  _log 0 "Calculating variations from averages '${averages[*]}' to '${results[*]}'"
+  local log_types_size=${#__sos_log_types[@]}
+  local initial_values=("${args[@]:0:log_types_size}")
+  local current_values=("${args[@]:log_types_size}")
+  _log 0 "Calculating variations from initial values '${initial_values[*]}' to '${current_values[*]}'"
   local variations=()
   for i in "${!__sos_log_types[@]}"; do
-    diff=$((100 * results[i] - averages[i]))
-    if [ "${averages[i]}" -eq "0" ]; then
+    diff=$((100 * current_values[i] - initial_values[i]))
+    if [ "${initial_values[i]}" -eq "0" ]; then
       if [ "${diff}" -gt "0" ]; then
         variations[i]=10000
       else
         variations[i]=0
       fi
     else
-      variations[i]=$((10000 * diff / averages[i] ))
+      variations[i]=$((10000 * diff / initial_values[i] ))
     fi
   done
   echo "${variations[@]}"
@@ -432,7 +452,7 @@ _notification_level_exceeded() {
     fi
     if [ $((current_idx)) -le $((alert_idx)) ]; then
       exceeded=1
-      _log 0 "Notification level exceeded (${exceeded_level}[${current_idx}]>${__sos_log_notification_level}[${alert_idx}])"
+      _log 0 "Notification level exceeded (${exceeded_level}>${__sos_log_notification_level})"
       break
     fi
   done
@@ -597,16 +617,6 @@ check() {
   # Defining pattern to retrieve log type
   local log_pattern=$(echo "${log_type_pattern}" | sed -r "s/%environment/${environment}/g")
 
-  # Retrieving log history
-  local averages=()
-  local log_file_history=$(_get_log_file_history "${log_file_pattern}" "${log_folder}" "${log_file_history_limit}" "${log_file_history_offset}")
-  if [ ! -z "${log_file_history}" ]; then
-    _log 1 "Analyzing log file history with files: ${log_file_history} "
-    averages=( $(_analyze_history "${log_pattern}" "${log_file_history}") )
-  else
-    _log 2 "No log history found to analyze"
-  fi
-
   # Analyzing current log file
   if [ -z "${__sos_log_file}" ]; then
     # No log file provided: retrieving current with date and pattern
@@ -621,21 +631,41 @@ check() {
     # Log file provided, appending log folder
     __sos_log_file="${log_folder}/${__sos_log_file}"
   fi
-  _log 1 "Analyzing file: ${__sos_log_file}"
+  _log 1 "Analyzing log file: ${__sos_log_file}"
   local results=( $(_analyze_file "${log_pattern}" "${__sos_log_file}") )
+
+  # Analyzing log history
+  local log_file_history=( $(_get_log_file_history "${log_file_pattern}" "${log_folder}" "${log_file_history_limit}" "${log_file_history_offset}") )
+  local log_file_history_size=${#log_file_history[@]}
+  local previous=()
+  local averages=()
+  if [ "${log_file_history_size}" -lt 1 ]; then
+    _log 2 "No log history found to analyze"
+  else
+    _log 1 "Analyzing previous log file: ${log_file_history[0]} "
+    previous=( $(_analyze_file "${log_pattern}" "${log_file_history[0]}") )
+
+    _log 1 "Analyzing log file history: ${log_file_history[*]} "
+    averages=( $(_analyze_history "${log_pattern}" "${log_file_history[*]}") )
+  fi
 
   # Calculating variations
   local variations=()
-  local history_size=${#averages[@]}
-  if [ "${history_size}" -lt 1 ]; then
+  local variations_avg=()
+  if [ "${log_file_history_size}" -lt 1 ]; then
     _log 1 "No variations to calculate without history"
   else
-    variations=( $(_calculate_variations "${averages[*]}" "${results[*]}") )
+    local previous_avg=()
+    for i in "${previous[@]}"; do
+      previous_avg+=( $((100 * i)) )
+    done
+    variations=( $(_calculate_variations "${previous_avg[*]}" "${results[*]}") )
+    variations_avg=( $(_calculate_variations "${averages[*]}" "${results[*]}") )
   fi
 
   # Analyzing thresholds: calculating exceeded threshold
   _log 1 "Checking for exceeded thresholds"
-  local exceeded_level=$(_calculate_exceeded_threshold "${results[*]}" "${variations[*]}")
+  local exceeded_level=$(_calculate_exceeded_threshold "${results[*]}" "${variations_avg[*]}")
   if [ -z "${exceeded_level}" ]; then
     _log 1 "No threshold exceeded"
   else
@@ -648,7 +678,6 @@ check() {
     _log 1 "Notification ignored"
   else
     _log 1 "Triggering notification"
-    local variation_size=${#variations[@]}
     # Building subject
     local subject=$(echo "${mail_subject}" | sed -r "s/%environment/${environment}/g")
     subject=$(echo "${subject}" | sed -r "s/%level/${exceeded_level}/g")
@@ -656,18 +685,15 @@ check() {
     local body="Log file analysis results for '${__sos_log_file}':\n"
     for i in "${!__sos_log_types[@]}"; do
       local var=""
-      if [ "${variation_size}" -gt 0 ]; then
-        # Adding variation to results
-        local sign=""
-        if [ "${variations[i]}" -ge "0" ]; then
-          sign="+"
-        fi
-        var=" (${sign}$(_format_float ${variations[i]})%)"
+      if [ "${log_file_history_size}" -gt 0 ]; then
+        # Adding variations to history
+        var+=" | previous=$(_format_variation ${variations[i]})"
+        var+=" | average=$(_format_variation ${variations_avg[i]})"
       fi
       body+=" - ${__sos_log_types[i]}: ${results[i]}${var}\n"
     done
     body+="\n"
-    body+="Sent from '$(hostname)'"
+    body+="Sent from: $(hostname)"
     local notification_sent=$(_send_notification "${subject}" "${body}")
     if [ "${notification_sent}" -ne "1" ]; then
       _fail "Notification failed"
