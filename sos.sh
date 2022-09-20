@@ -199,6 +199,16 @@ _get_config() {
 }
 
 ############################################################################
+# Disk usage management methods
+############################################################################
+
+_disk_usage() {
+  local volume=$1
+  local usage=$(df -h "${volume}" | grep -o -E '[0-9]+%' | head -1 | sed -r "s/%//g")
+  echo "${usage}"
+}
+
+############################################################################
 # Log files management methods
 ############################################################################
 
@@ -589,7 +599,7 @@ check() {
   __sos_mail_pretend=$(_get_config "mail_pretend" "0")
 
   _log 0 "Loading check options from command line arguments and from file '${__sos_config_file}'"
-  # > Local configurations for logs
+  # > Configurations for logs
   local environment=$(_get_config "environment" "default")
   local log_folder=$(_get_config "log_folder" "${__sos_current_dir}")
   if [[ $log_folder != /* ]]; then
@@ -602,8 +612,10 @@ check() {
   local log_file_history_limit=$(_get_config "log_file_history_limit" "10")
   local log_file_history_offset=$(_get_config "log_file_history_offset" "0")
   local log_type_pattern=$(_get_config "log_type_pattern" "%type")
-  # > Local configuration for mail
+  # > Configuration for mail
   local mail_subject=$(_get_config "mail_subject" "[%environment] SysObsScript | %level")
+  # > Configuration for disk usage
+  local disk_volume=$(_get_config "disk_volume" "/")
 
   # Logging current configuration
   _log 0 "Checking system with:"
@@ -624,6 +636,7 @@ check() {
   _log 0 "   mail_receiver = '${__sos_mail_receiver}'"
   _log 0 "   mail_pretend = '${__sos_mail_pretend}'"
   _log 0 "   mail_subject = '${mail_subject}'"
+  _log 0 "   disk_volume = '${disk_volume}'"
 
   # Defining pattern to retrieve log type
   local log_pattern=$(echo "${log_type_pattern}" | sed -r "s/%environment/${environment}/g")
@@ -676,6 +689,11 @@ check() {
 
   # Counting line numbers
   local num_lines=$(_count_lines_in_file "${__sos_log_file}")
+  _log 1 "Log file contains ${num_lines} number of lines"
+
+  # Checking disk usage
+  local disk_usage=$(_disk_usage "${disk_volume}")
+  _log 1 "Disk usage: ${disk_usage}"
 
   # Analyzing thresholds: calculating exceeded threshold
   # TODO: also add thresholds for ${variations}
@@ -708,6 +726,7 @@ check() {
       body+=" - ${__sos_log_types[i]}: ${results[i]}${var}\n"
     done
     body+="Number of lines: ${num_lines}\n"
+    body+="Disk usage: $(_format_float "$((100 * disk_usage))")%\n"
     body+="\n"
     body+="Sent from: $(hostname)"
     local notification_sent=$(_send_notification "${subject}" "${body}")
