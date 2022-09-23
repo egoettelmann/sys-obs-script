@@ -500,7 +500,7 @@ _send_notification() {
     return
   fi
   local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
-      --url "smtp://${__sos_mail_host}:${__sos_mail_port}" \
+      --url "${__sos_mail_endpoint}" \
       --mail-from "${__sos_mail_sender}" \
       --mail-rcpt "${__sos_mail_receiver}" \
       --user "${__sos_mail_username}:${__sos_mail_password}" \
@@ -548,10 +548,10 @@ usage() {
   echo "     --log_file_date_delay=*      delay for the current log file date (required if log_file is empty) - default: '-1'" >&2
   echo "     --log_file_history_limit=*   the maximum number of files to take into account for history - default: '10'" >&2
   echo "     --log_file_history_offset=*  the number of files to ignore for history (files are in reverse order) - default: '0'" >&2
+  echo "     --mail_endpoint=*            the endpoint to use for sending the email (should include protocol, host and port)" >&2
+  echo "     --mail_username=*            the username of the email account" >&2
+  echo "     --mail_password=*            the password of the email account" >&2
   echo "     --mail_sender=*              the email address from which the notification email will be sent" >&2
-  echo "     --mail_password=*            the password of the email 'sender' account" >&2
-  echo "     --mail_host=*                the SMTP host of the email account" >&2
-  echo "     --mail_port=*                the port of the email account" >&2
   echo "     --mail_receiver=*            the email address to which the notification email will be sent" >&2
   echo "     --mail_subject=*             the subject of the notification email (can contain placeholders) - default: '[%environment] SysObsScript | %level'" >&2
   echo "" >&2
@@ -591,8 +591,7 @@ check() {
   __sos_log_thresholds_var=($(_get_config "log_thresholds_var" "5 10 -1 -1"))
   __sos_log_notification_level=$(_get_config "log_notification_level" "WARNING")
   # > Global configuration for mail
-  __sos_mail_host=$(_get_config "mail_host" "")
-  __sos_mail_port=$(_get_config "mail_port" "")
+  __sos_mail_endpoint=$(_get_config "mail_endpoint" "")
   __sos_mail_username=$(_get_config "mail_username" "")
   __sos_mail_password=$(_get_config "mail_password" "")
   __sos_mail_sender=$(_get_config "mail_sender" "")
@@ -631,8 +630,7 @@ check() {
   _log 0 "   log_type_pattern = '${log_type_pattern}'"
   _log 0 "   log_types = '${__sos_log_types[*]}'"
   _log 0 "   log_notification_level = '${__sos_log_notification_level}'"
-  _log 0 "   mail_host = '${__sos_mail_host}'"
-  _log 0 "   mail_port = '${__sos_mail_port}'"
+  _log 0 "   mail_endpoint = '${__sos_mail_endpoint}'"
   _log 0 "   mail_username = '${__sos_mail_username}'"
   _log 0 "   mail_sender = '${__sos_mail_sender}'"
   _log 0 "   mail_receiver = '${__sos_mail_receiver}'"
