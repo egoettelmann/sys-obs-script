@@ -503,7 +503,7 @@ _send_notification() {
       --url "smtp://${__sos_mail_host}:${__sos_mail_port}" \
       --mail-from "${__sos_mail_sender}" \
       --mail-rcpt "${__sos_mail_receiver}" \
-      --user "${__sos_mail_sender}:${__sos_mail_password}" \
+      --user "${__sos_mail_username}:${__sos_mail_password}" \
       -T <(echo -e "From: <${__sos_mail_sender}>\r\nTo: <${__sos_mail_receiver}>\r\nSubject: ${subject}\r\nDate: $(date -R)\r\n\r\n${body}"))
   local response_body=$(echo "${response}" | sed -e 's/HTTPSTATUS\:.*//g')
   local response_code=$(echo "${response}" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
@@ -591,10 +591,11 @@ check() {
   __sos_log_thresholds_var=($(_get_config "log_thresholds_var" "5 10 -1 -1"))
   __sos_log_notification_level=$(_get_config "log_notification_level" "WARNING")
   # > Global configuration for mail
-  __sos_mail_sender=$(_get_config "mail_sender" "")
-  __sos_mail_password=$(_get_config "mail_password" "")
   __sos_mail_host=$(_get_config "mail_host" "")
   __sos_mail_port=$(_get_config "mail_port" "")
+  __sos_mail_username=$(_get_config "mail_username" "")
+  __sos_mail_password=$(_get_config "mail_password" "")
+  __sos_mail_sender=$(_get_config "mail_sender" "")
   __sos_mail_receiver=$(_get_config "mail_receiver" "")
   __sos_mail_pretend=$(_get_config "mail_pretend" "0")
 
@@ -630,9 +631,10 @@ check() {
   _log 0 "   log_type_pattern = '${log_type_pattern}'"
   _log 0 "   log_types = '${__sos_log_types[*]}'"
   _log 0 "   log_notification_level = '${__sos_log_notification_level}'"
-  _log 0 "   mail_sender = '${__sos_mail_sender}'"
   _log 0 "   mail_host = '${__sos_mail_host}'"
   _log 0 "   mail_port = '${__sos_mail_port}'"
+  _log 0 "   mail_username = '${__sos_mail_username}'"
+  _log 0 "   mail_sender = '${__sos_mail_sender}'"
   _log 0 "   mail_receiver = '${__sos_mail_receiver}'"
   _log 0 "   mail_pretend = '${__sos_mail_pretend}'"
   _log 0 "   mail_subject = '${mail_subject}'"
@@ -696,7 +698,7 @@ check() {
   _log 1 "Disk usage: ${disk_usage}"
 
   # Analyzing thresholds: calculating exceeded threshold
-  # TODO: also add thresholds for ${variations}
+  # TODO: also add thresholds for ${variations} (to previous, not only avg)
   _log 1 "Checking for exceeded thresholds"
   local exceeded_level=$(_calculate_exceeded_threshold "${results[*]}" "${variations_avg[*]}")
   if [ -z "${exceeded_level}" ]; then
@@ -725,7 +727,8 @@ check() {
       fi
       body+=" - ${__sos_log_types[i]}: ${results[i]}${var}\n"
     done
-    body+="Number of lines: ${num_lines}\n"
+    body+="Total number of lines: ${num_lines}\n"
+    body+="\n"
     body+="Disk usage: $(_format_float "$((100 * disk_usage))")%\n"
     body+="\n"
     body+="Sent from: $(hostname)"
