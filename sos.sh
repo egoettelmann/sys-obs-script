@@ -554,6 +554,7 @@ usage() {
   echo "     --mail_sender=*              the email address from which the notification email will be sent" >&2
   echo "     --mail_receiver=*            the email address to which the notification email will be sent" >&2
   echo "     --mail_subject=*             the subject of the notification email (can contain placeholders) - default: '[%environment] SysObsScript | %level'" >&2
+  echo "     --disk_volume=*              the disk volume to check for usage - default: '/'" >&2
   echo "" >&2
   exit 0
 }
