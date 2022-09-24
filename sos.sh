@@ -8,7 +8,8 @@
 # TODO: OPTIONAL - add disk space check
 # TODO: OPTIONAL - add http status checks
 
-__sos_script_version="0.0.2"
+__sos_script_version="0.0.3"
+__sos_update_url="https://github.com/egoettelmann/sys-obs-script/raw/master/sos.sh"
 
 # Defining current folder
 __sos_current_dir="$( dirname -- "$0"; )"
@@ -58,10 +59,10 @@ _get_date() {
   _log 0 "Retrieving date with format '${format}' for '${delay}'"
   if date --version >/dev/null 2>&1 ; then
     # Using GNU date
-    echo $(date -d "${delay} day" +"${format}")
+    date -d "${delay} day" +"${format}"
   else
     # Using BSD date
-    echo $(date -v "${delay}d" +"${format}")
+    date -v "${delay}d" +"${format}"
   fi
 }
 
@@ -87,7 +88,8 @@ _avg() {
 # The formatted value with a dot as decimal separator.
 _format_float() {
   local num=$1
-  local res=$(echo "${num}" | sed -e 's/..$/.&/;t' -e 's/.$/.0&/')
+  local res
+  res=$(echo "${num}" | sed -e 's/..$/.&/;t' -e 's/.$/.0&/')
   local prefix=""
   if [ "${num}" -lt 10 ] && [ "${num}" -ge 0 ]; then
     prefix="0"
@@ -137,7 +139,8 @@ _get_config_from_args() {
 # The absolute path to the found configuration file. Empty of no file defined.
 _load_config_file() {
   local config_file=""
-  local config_file_name=$(_get_config_from_args "config_file")
+  local config_file_name
+  config_file_name=$(_get_config_from_args "config_file")
   if [ "${config_file_name}" != "__UNDEFINED__" ]; then
     config_file="${__sos_current_dir}/${config_file_name}"
     if test -f "${config_file}"; then
@@ -182,7 +185,8 @@ _get_config_from_file() {
 _get_config() {
   local property=$1
   local default_value=$2
-  local value=$(_get_config_from_args "${property}")
+  local value
+  value=$(_get_config_from_args "${property}")
   if [ "${value}" != "__UNDEFINED__" ]; then
     _log 0 "Found configuration value for property '${property}' in command line arguments"
     echo "${value}"
@@ -204,7 +208,8 @@ _get_config() {
 
 _disk_usage() {
   local volume=$1
-  local usage=$(df -h "${volume}" | grep -o -E '[0-9]+%' | head -1 | sed -r "s/%//g")
+  local usage
+  usage=$(df -h "${volume}" | grep -o -E '[0-9]+%' | head -1 | sed -r "s/%//g")
   echo "${usage}"
 }
 
@@ -234,9 +239,9 @@ _get_files() {
     offset=$4
   fi
   _log 0 "Retrieving files in '${folder}' for '${pattern}' (offset=${offset}, limit=${limit})"
-  if test -n "$(find ${folder} -maxdepth 1 -name ${pattern} -print -quit)"; then
+  if test -n "$(find "${folder}" -maxdepth 1 -name "${pattern}" -print -quit)"; then
     local counter=0
-    find ${folder} -name ${pattern} -print0 | sort -zr | while read -d $'\0' file
+    find "${folder}" -name "${pattern}" -print0 | sort -zr | while read -d $'\0' file
     do
       counter=$((counter+1))
       if [ $((counter)) -gt $((offset + limit)) ]; then
@@ -266,8 +271,9 @@ _get_log_file() {
   local folder=$2
   local log_date=$3
   _log 0 "Retrieving pattern '${pattern}' from log file in '${folder}' for '${log_date}'"
-  local search=$(echo "${pattern}" | sed -r "s/%date/${log_date}/g")
-  echo $(_get_files "${search}" "${folder}")
+  local search
+  search=$(echo "${pattern}" | sed -r "s/%date/${log_date}/g")
+  _get_files "${search}" "${folder}"
 }
 
 # Get the history of log files to analyze.
@@ -284,7 +290,8 @@ _get_log_file_history() {
   local limit=$3
   local offset=$4
   _log 0 "Retrieving pattern '${pattern}' from log files history in '${folder}'"
-  local search=$(echo "${pattern}" | sed -r "s/%date/*/g")
+  local search
+  search=$(echo "${pattern}" | sed -r "s/%date/*/g")
   local files=( $(_get_files "${search}" "${folder}" "${limit}" "${offset}") )
   local filtered_files=()
   for file in ${files[*]}; do
@@ -311,7 +318,8 @@ _count_occurrences_in_file() {
   local pattern=$1
   local file=$2
   _log 0 "Counting occurrences of pattern '${pattern}' in '${file}'"
-  local count=$(grep -c "${pattern}" "${file}")
+  local count
+  count=$(grep -c "${pattern}" "${file}")
   echo "${count}"
 }
 
@@ -322,7 +330,8 @@ _count_occurrences_in_file() {
 # Returns the number of lines.
 _count_lines_in_file() {
   local file=$1
-  local count=$(grep -c ^ "${file}")
+  local count
+  count=$(grep -c ^ "${file}")
   echo "${count}"
 }
 
@@ -337,9 +346,11 @@ _analyze_file() {
   local file=$2
   _log 0 "Analyzing pattern '${pattern}' within log file '${file}'"
   local counts=()
-  for type in ${__sos_log_types[@]}; do
-    local search=$(echo "${pattern}" | sed -r "s/%type/${type}/g")
-    local e=$(_count_occurrences_in_file "${search}" "${file}")
+  for type in "${__sos_log_types[@]}"; do
+    local search
+    local e
+    search=$(echo "${pattern}" | sed -r "s/%type/${type}/g")
+    e=$(_count_occurrences_in_file "${search}" "${file}")
     counts+=("$e")
   done
   echo "${counts[@]}"
@@ -359,7 +370,7 @@ _analyze_history() {
 
   # Initializing results array for history
   local history=()
-  for type in ${__sos_log_types[@]}; do
+  for type in "${__sos_log_types[@]}"; do
     history+=(0)
   done
 
@@ -367,10 +378,10 @@ _analyze_history() {
   local num_files=0
   for file in ${files[*]}; do
     _log 0 "Analyzing '${file}' for history"
-    num_files=$((${num_files} + 1))
+    num_files=$(("${num_files}" + 1))
     local result=( $(_analyze_file "${pattern}" "${file}") )
     for i in "${!result[@]}"; do
-      history[i]=$(( ${history[i]} + ${result[i]} ))
+      history[i]=$(( "${history[i]}" + "${result[i]}" ))
     done
   done
   _log 0 "Analyzed '${num_files}' files for history"
@@ -380,7 +391,7 @@ _analyze_history() {
   average=()
   for i in "${!__sos_log_types[@]}"; do
     average[i]=$(_avg ${history[i]} ${num_files})
-    _log 1 " - ${__sos_log_types[i]}: $(_format_float ${average[i]})"
+    _log 1 " - ${__sos_log_types[i]}: $(_format_float "${average[i]}")"
   done
 
   echo "${average[@]}"
@@ -499,14 +510,17 @@ _send_notification() {
     echo 1
     return
   fi
-  local response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+  local response
+  response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
       --url "${__sos_mail_endpoint}" \
       --mail-from "${__sos_mail_sender}" \
       --mail-rcpt "${__sos_mail_receiver}" \
       --user "${__sos_mail_username}:${__sos_mail_password}" \
       -T <(echo -e "From: <${__sos_mail_sender}>\r\nTo: <${__sos_mail_receiver}>\r\nSubject: ${subject}\r\nDate: $(date -R)\r\n\r\n${body}"))
-  local response_body=$(echo "${response}" | sed -e 's/HTTPSTATUS\:.*//g')
-  local response_code=$(echo "${response}" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+  local response_body
+  response_body=$(echo "${response}" | sed -e 's/HTTPSTATUS\:.*//g')
+  local response_code
+  response_code=$(echo "${response}" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
   if [ "${response_code}" -ge "200" ] && [ "${response_code}" -lt "300" ]; then
     _log 1 "Notification sent successfully: status='${response_code}'"
     echo 1
@@ -567,6 +581,36 @@ version() {
   exit 0
 }
 
+# Updates the current script to the latest available version.
+#
+# Prints the new version and exists the program with code 0 if update successful.
+update() {
+  local tmp_file
+  tmp_file="${__sos_current_dir}/sos-$(date +%s).tmp"
+  local target_file="${__sos_current_dir}/sos.sh"
+  echo "Updating to latest version from: ${__sos_update_url}" >&2
+  local http_code
+  http_code=$(curl --location --silent --output "${tmp_file}" --write-out "%{http_code}" "${__sos_update_url}")
+  if [[ ${http_code} -lt 200 || ${http_code} -ge 300 ]] ; then
+    echo "Failed to download latest version, status code: ${http_code}"
+    rm "${tmp_file}"
+    exit 1
+  fi
+  # Aligning permissions to temp file before rename
+  chmod "$( stat -f '%p' "${target_file}" )" "${tmp_file}"
+  if stat -c '%U:%G' "${target_file}" >/dev/null 2>&1 ; then
+    # Using GNU stat
+    chown "$( stat -c '%U:%G' "${target_file}" )" "${tmp_file}"
+  else
+    # Using BSD stat
+    chown "$( stat -f '%Su:%Sg' "${target_file}" )" "${tmp_file}"
+  fi
+  mv "${tmp_file}" "${target_file}"
+  echo "Script updated to version: "
+  "${target_file}" "version"
+  exit 0
+}
+
 # Runs the entire SOS check.
 #
 # Exits the program with code 0 if successful.
@@ -601,22 +645,32 @@ check() {
 
   _log 0 "Loading check options from command line arguments and from file '${__sos_config_file}'"
   # > Configurations for logs
-  local environment=$(_get_config "environment" "default")
-  local log_folder=$(_get_config "log_folder" "${__sos_current_dir}")
+  local environment
+  environment=$(_get_config "environment" "default")
+  local log_folder
+  log_folder=$(_get_config "log_folder" "${__sos_current_dir}")
   if [[ $log_folder != /* ]]; then
     # Not an absolute path, appending current dir
     log_folder="${__sos_current_dir}/${log_folder}"
   fi
-  local log_file_pattern=$(_get_config "log_file_pattern" "")
-  local log_file_date_format=$(_get_config "log_file_date_format" "%Y-%m-%d")
-  local log_file_date_delay=$(_get_config "log_file_date_delay" "-1")
-  local log_file_history_limit=$(_get_config "log_file_history_limit" "10")
-  local log_file_history_offset=$(_get_config "log_file_history_offset" "0")
-  local log_type_pattern=$(_get_config "log_type_pattern" "%type")
+  local log_file_pattern
+  log_file_pattern=$(_get_config "log_file_pattern" "")
+  local log_file_date_format
+  log_file_date_format=$(_get_config "log_file_date_format" "%Y-%m-%d")
+  local log_file_date_delay
+  log_file_date_delay=$(_get_config "log_file_date_delay" "-1")
+  local log_file_history_limit
+  log_file_history_limit=$(_get_config "log_file_history_limit" "10")
+  local log_file_history_offset
+  log_file_history_offset=$(_get_config "log_file_history_offset" "0")
+  local log_type_pattern
+  log_type_pattern=$(_get_config "log_type_pattern" "%type")
   # > Configuration for mail
-  local mail_subject=$(_get_config "mail_subject" "[%environment] SysObsScript | %level")
+  local mail_subject
+  mail_subject=$(_get_config "mail_subject" "[%environment] SysObsScript | %level")
   # > Configuration for disk usage
-  local disk_volume=$(_get_config "disk_volume" "/")
+  local disk_volume
+  disk_volume=$(_get_config "disk_volume" "/")
 
   # Logging current configuration
   _log 0 "Checking system with:"
@@ -640,12 +694,14 @@ check() {
   _log 0 "   disk_volume = '${disk_volume}'"
 
   # Defining pattern to retrieve log type
-  local log_pattern=$(echo "${log_type_pattern}" | sed -r "s/%environment/${environment}/g")
+  local log_pattern
+  log_pattern=$(echo "${log_type_pattern}" | sed -r "s/%environment/${environment}/g")
 
   # Analyzing current log file
   if [ -z "${__sos_log_file}" ]; then
     # No log file provided: retrieving current with date and pattern
-    local log_date=$(_get_date "${log_file_date_format}" "${log_file_date_delay}")
+    local log_date
+    log_date=$(_get_date "${log_file_date_format}" "${log_file_date_delay}")
     _log 1 "No log file defined, retrieving logs for date '${log_date}'"
 
     __sos_log_file=$(_get_log_file "${log_file_pattern}" "${log_folder}" "${log_date}")
@@ -689,17 +745,20 @@ check() {
   fi
 
   # Counting line numbers
-  local num_lines=$(_count_lines_in_file "${__sos_log_file}")
+  local num_lines
+  num_lines=$(_count_lines_in_file "${__sos_log_file}")
   _log 1 "Log file contains ${num_lines} number of lines"
 
   # Checking disk usage
-  local disk_usage=$(_disk_usage "${disk_volume}")
+  local disk_usage
+  disk_usage=$(_disk_usage "${disk_volume}")
   _log 1 "Disk usage: ${disk_usage}"
 
   # Analyzing thresholds: calculating exceeded threshold
   # TODO: also add thresholds for ${variations} (to previous, not only avg)
   _log 1 "Checking for exceeded thresholds"
-  local exceeded_level=$(_calculate_exceeded_threshold "${results[*]}" "${variations_avg[*]}")
+  local exceeded_level
+  exceeded_level=$(_calculate_exceeded_threshold "${results[*]}" "${variations_avg[*]}")
   if [ -z "${exceeded_level}" ]; then
     _log 1 "No threshold exceeded"
   else
@@ -707,13 +766,15 @@ check() {
   fi
 
   # Checking if alert should be sent
-  local send_alert=$(_notification_level_exceeded "${exceeded_level}")
+  local send_alert
+  send_alert=$(_notification_level_exceeded "${exceeded_level}")
   if [ "${send_alert}" -ne "1" ]; then
     _log 1 "Notification ignored"
   else
     _log 1 "Triggering notification"
     # Building subject
-    local subject=$(echo "${mail_subject}" | sed -r "s/%environment/${environment}/g")
+    local subject
+    subject=$(echo "${mail_subject}" | sed -r "s/%environment/${environment}/g")
     subject=$(echo "${subject}" | sed -r "s/%level/${exceeded_level}/g")
     # Building body
     local body="Log file analysis results for '${__sos_log_file}':\n"
@@ -731,7 +792,8 @@ check() {
     body+="Disk usage: $(_format_float "$((100 * disk_usage))")%\n"
     body+="\n"
     body+="Sent from: $(hostname)"
-    local notification_sent=$(_send_notification "${subject}" "${body}")
+    local notification_sent
+    notification_sent=$(_send_notification "${subject}" "${body}")
     if [ "${notification_sent}" -ne "1" ]; then
       _fail "Notification failed"
     else
@@ -752,7 +814,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
   case "$1" in
     help|-h|--help) usage;;
     version|-v|--version) version;;
-    #update) update;;
+    update) update;;
     #status) status;;
     #schedule) schedule;;
     check) check "$@";;
