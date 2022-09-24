@@ -777,7 +777,10 @@ check() {
     subject=$(echo "${mail_subject}" | sed -r "s/%environment/${environment}/g")
     subject=$(echo "${subject}" | sed -r "s/%level/${exceeded_level}/g")
     # Building body
-    local body="Log file analysis results for '${__sos_log_file}':\n"
+    local body="System check detailed report.\n\n"
+    body+="Log file analysis results for '${__sos_log_file}'\n"
+    body+="- Total number of lines: ${num_lines}\n"
+    body+="- Log types repartition:\n"
     for i in "${!__sos_log_types[@]}"; do
       local var=""
       if [ "${log_file_history_size}" -gt 0 ]; then
@@ -785,13 +788,13 @@ check() {
         var+=" | previous=$(_format_variation ${variations[i]})"
         var+=" | average=$(_format_variation ${variations_avg[i]})"
       fi
-      body+=" - ${__sos_log_types[i]}: ${results[i]}${var}\n"
+      body+="  | ${__sos_log_types[i]} | number=${results[i]}${var} |\n"
     done
-    body+="Total number of lines: ${num_lines}\n"
     body+="\n"
-    body+="Disk usage: $(_format_float "$((100 * disk_usage))")%\n"
+    body+="Disk analysis results for '${disk_volume}'\n"
+    body+=" - usage: $(_format_float "$((100 * disk_usage))")%\n"
     body+="\n"
-    body+="Sent from: $(hostname)"
+    body+="Report sent from: $(hostname)"
     local notification_sent
     notification_sent=$(_send_notification "${subject}" "${body}")
     if [ "${notification_sent}" -ne "1" ]; then
