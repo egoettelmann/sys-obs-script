@@ -348,8 +348,8 @@ _analyze_file() {
   local counts=()
   for type in "${__sos_log_types[@]}"; do
     local search
-    local e
     search=$(echo "${pattern}" | sed -r "s/%type/${type}/g")
+    local e
     e=$(_count_occurrences_in_file "${search}" "${file}")
     counts+=("$e")
   done
@@ -363,9 +363,8 @@ _analyze_file() {
 #
 # Returns an array with the number of average occurrences for each log type entry in ${__sos_log_types}.
 _analyze_history() {
-  local args=( $@ )
   local pattern=$1
-  local files=("${args[@]:1}")
+  local files=(${@:2})
   _log 0 "Analyzing pattern '${pattern}' within log file history of '${#files[@]}' files"
 
   # Initializing results array for history
@@ -378,10 +377,10 @@ _analyze_history() {
   local num_files=0
   for file in ${files[*]}; do
     _log 0 "Analyzing '${file}' for history"
-    num_files=$(("${num_files}" + 1))
+    num_files=$((num_files + 1))
     local result=( $(_analyze_file "${pattern}" "${file}") )
     for i in "${!result[@]}"; do
-      history[i]=$(( "${history[i]}" + "${result[i]}" ))
+      history[i]=$(( history[i] + result[i] ))
     done
   done
   _log 0 "Analyzed '${num_files}' files for history"
@@ -587,7 +586,7 @@ version() {
 update() {
   local tmp_file
   tmp_file="${__sos_current_dir}/sos-$(date +%s).tmp"
-  local target_file="${__sos_current_dir}/sos.sh"
+  local target_file="${__sos_current_dir}/sos"
   echo "Updating to latest version from: ${__sos_update_url}" >&2
   local http_code
   http_code=$(curl --location --silent --output "${tmp_file}" --write-out "%{http_code}" "${__sos_update_url}")
@@ -715,6 +714,11 @@ check() {
   _log 1 "Analyzing log file: ${__sos_log_file}"
   local results=( $(_analyze_file "${log_pattern}" "${__sos_log_file}") )
 
+  # Counting line numbers
+  local num_lines
+  num_lines=$(_count_lines_in_file "${__sos_log_file}")
+  _log 1 "Log file contains ${num_lines} number of lines"
+
   # Analyzing log history
   local log_file_history=( $(_get_log_file_history "${log_file_pattern}" "${log_folder}" "${log_file_history_limit}" "${log_file_history_offset}") )
   local log_file_history_size=${#log_file_history[@]}
@@ -743,11 +747,6 @@ check() {
     variations=( $(_calculate_variations "${previous_avg[*]}" "${results[*]}") )
     variations_avg=( $(_calculate_variations "${averages[*]}" "${results[*]}") )
   fi
-
-  # Counting line numbers
-  local num_lines
-  num_lines=$(_count_lines_in_file "${__sos_log_file}")
-  _log 1 "Log file contains ${num_lines} number of lines"
 
   # Checking disk usage
   local disk_usage
@@ -780,19 +779,21 @@ check() {
     local body="System check detailed report.\n\n"
     body+="Log file analysis results for '${__sos_log_file}'\n"
     body+="- Total number of lines: ${num_lines}\n"
+    # TODO: add variations of number of lines
     body+="- Log types repartition:\n"
     for i in "${!__sos_log_types[@]}"; do
-      local var=""
+      local var2=""
       if [ "${log_file_history_size}" -gt 0 ]; then
         # Adding variations to history
-        var+=" | previous=$(_format_variation ${variations[i]})"
-        var+=" | average=$(_format_variation ${variations_avg[i]})"
+        var2+=$(printf " | previous=%10s" "$(_format_variation ${variations[i]})")
+        var2+=$(printf " | average=%10s" "$(_format_variation ${variations_avg[i]})")
       fi
-      body+="  | ${__sos_log_types[i]} | number=${results[i]}${var} |\n"
+      body+=$(printf "  | %10s | total=%5s%s |" "${__sos_log_types[i]}" "${results[i]}" "${var2}")
+      body+="\n"
     done
     body+="\n"
     body+="Disk analysis results for '${disk_volume}'\n"
-    body+=" - usage: $(_format_float "$((100 * disk_usage))")%\n"
+    body+="- Used: $(_format_float "$((100 * disk_usage))")%\n"
     body+="\n"
     body+="Report sent from: $(hostname)"
     local notification_sent
