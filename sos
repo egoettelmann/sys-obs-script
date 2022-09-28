@@ -335,6 +335,24 @@ _count_lines_in_file() {
   echo "${count}"
 }
 
+_count_avg_lines_in_files() {
+  local files=($@)
+  _log 0 "Counting average lines in history of '${#files[@]}' files"
+
+  # Iterating over files
+  local num_files=0
+  local total_num_lines=0
+  for file in ${files[*]}; do
+    local num_lines
+    num_lines=$(_count_lines_in_file "${file}")
+    num_files=$((num_files + 1))
+    total_num_lines=$((total_num_lines + num_lines))
+  done
+  local average
+  average=$(_avg ${total_num_lines} ${num_files})
+  echo "${average}"
+}
+
 # Analyzes the provided log file with a given pattern.
 #
 # $1 - the pattern to search for
@@ -387,13 +405,34 @@ _analyze_history() {
 
   # Calculating averages
   _log 1 "Calculating averages on history:"
-  average=()
+  local average=()
   for i in "${!__sos_log_types[@]}"; do
     average[i]=$(_avg ${history[i]} ${num_files})
     _log 1 " - ${__sos_log_types[i]}: $(_format_float "${average[i]}")"
   done
 
   echo "${average[@]}"
+}
+
+# Calculates the variation between an average value and the provided value.
+#
+# $1 - the average value (x100 for precision)
+# $2 - the current value
+#
+# Returns the variation compared to the average.
+_calculate_variation() {
+  local initial_value=$1
+  local current_value=$2
+  diff=$((100 * current_value - initial_value))
+  if [ "${initial_value}" -eq "0" ]; then
+    if [ "${diff}" -gt "0" ]; then
+      echo 10000
+    else
+      echo 0
+    fi
+  else
+    echo $((10000 * diff / initial_value ))
+  fi
 }
 
 # Calculates the variations between a provided list of averages and the current results.
@@ -411,16 +450,7 @@ _calculate_variations() {
   _log 0 "Calculating variations from initial values '${initial_values[*]}' to '${current_values[*]}'"
   local variations=()
   for i in "${!__sos_log_types[@]}"; do
-    diff=$((100 * current_values[i] - initial_values[i]))
-    if [ "${initial_values[i]}" -eq "0" ]; then
-      if [ "${diff}" -gt "0" ]; then
-        variations[i]=10000
-      else
-        variations[i]=0
-      fi
-    else
-      variations[i]=$((10000 * diff / initial_values[i] ))
-    fi
+    variations[i]=$(_calculate_variation "${initial_values[i]}" "${current_values[i]}")
   done
   echo "${variations[@]}"
 }
@@ -712,40 +742,48 @@ check() {
     __sos_log_file="${log_folder}/${__sos_log_file}"
   fi
   _log 1 "Analyzing log file: ${__sos_log_file}"
-  local results=( $(_analyze_file "${log_pattern}" "${__sos_log_file}") )
+  local repartition=( $(_analyze_file "${log_pattern}" "${__sos_log_file}") )
 
   # Counting line numbers
-  local num_lines
-  num_lines=$(_count_lines_in_file "${__sos_log_file}")
-  _log 1 "Log file contains ${num_lines} number of lines"
+  local logsize
+  logsize=$(_count_lines_in_file "${__sos_log_file}")
+  _log 1 "Log file contains ${logsize} number of lines"
 
   # Analyzing log history
   local log_file_history=( $(_get_log_file_history "${log_file_pattern}" "${log_folder}" "${log_file_history_limit}" "${log_file_history_offset}") )
   local log_file_history_size=${#log_file_history[@]}
-  local previous=()
-  local averages=()
+  local repartition_prv=()
+  local logsize_prv=0
+  local repartition_avg=()
+  local logsize_avg=0
   if [ "${log_file_history_size}" -lt 1 ]; then
     _log 2 "No log history found to analyze"
   else
     _log 1 "Analyzing previous log file: ${log_file_history[0]} "
-    previous=( $(_analyze_file "${log_pattern}" "${log_file_history[0]}") )
+    repartition_prv=( $(_analyze_file "${log_pattern}" "${log_file_history[0]}") )
+    logsize_prv=$(_count_lines_in_file "${log_file_history[0]}")
 
     _log 1 "Analyzing log file history: ${log_file_history[*]} "
-    averages=( $(_analyze_history "${log_pattern}" "${log_file_history[*]}") )
+    repartition_avg=( $(_analyze_history "${log_pattern}" "${log_file_history[*]}") )
+    logsize_avg=$(_count_avg_lines_in_files "${log_file_history[*]}")
   fi
 
   # Calculating variations
-  local variations=()
-  local variations_avg=()
+  local repartition_prv_var=()
+  local logsize_prv_var=0
+  local repartition_avg_var=()
+  local logsize_avg_var=0
   if [ "${log_file_history_size}" -lt 1 ]; then
     _log 1 "No variations to calculate without history"
   else
-    local previous_avg=()
-    for i in "${previous[@]}"; do
-      previous_avg+=( $((100 * i)) )
+    local repartition_prv_avg=()
+    for i in "${repartition_prv[@]}"; do
+      repartition_prv_avg+=( $((100 * i)) )
     done
-    variations=( $(_calculate_variations "${previous_avg[*]}" "${results[*]}") )
-    variations_avg=( $(_calculate_variations "${averages[*]}" "${results[*]}") )
+    repartition_prv_var=( $(_calculate_variations "${repartition_prv_avg[*]}" "${repartition[*]}") )
+    logsize_prv_var=$(_calculate_variation "$((100 * logsize_prv))" "${logsize}")
+    repartition_avg_var=( $(_calculate_variations "${repartition_avg[*]}" "${repartition[*]}") )
+    logsize_avg_var=$(_calculate_variation "${logsize_avg}" "${logsize}")
   fi
 
   # Checking disk usage
@@ -757,7 +795,7 @@ check() {
   # TODO: also add thresholds for ${variations} (to previous, not only avg)
   _log 1 "Checking for exceeded thresholds"
   local exceeded_level
-  exceeded_level=$(_calculate_exceeded_threshold "${results[*]}" "${variations_avg[*]}")
+  exceeded_level=$(_calculate_exceeded_threshold "${repartition[*]}" "${repartition_avg_var[*]}")
   if [ -z "${exceeded_level}" ]; then
     _log 1 "No threshold exceeded"
   else
@@ -777,22 +815,51 @@ check() {
     subject=$(echo "${subject}" | sed -r "s/%level/${exceeded_level}/g")
     # Building body
     local body="System check detailed report.\n\n"
-    body+="Log file analysis results for '${__sos_log_file}'\n"
-    body+="- Total number of lines: ${num_lines}\n"
+    body+="Log file analysis results\n"
+    body+="- Analyzed log file: '${__sos_log_file}'\n"
+    if [ "${log_file_history_size}" -gt 0 ]; then
+      body+="- Previous log file: '${log_file_history[0]}'\n"
+      body+="- History log file size: ${log_file_history_size}\n"
+    fi
+    body+="- Number of lines:\n"
+    body+=$(printf "  | %10s |" "Total")
+    local sep="  |------------|"
+    if [ "${log_file_history_size}" -gt 0 ]; then
+      body+=$(printf " %20s | %20s |" "Previous" "Average")
+      sep+="----------------------|----------------------|"
+    fi
+    body+="\n"
+    body+="${sep}\n"
     # TODO: add variations of number of lines
-    body+="- Log types repartition:\n"
-    for i in "${!__sos_log_types[@]}"; do
-      local var2=""
+    body+=$(printf "  | %10s |" "${logsize}")
       if [ "${log_file_history_size}" -gt 0 ]; then
         # Adding variations to history
-        var2+=$(printf " | previous=%10s" "$(_format_variation ${variations[i]})")
-        var2+=$(printf " | average=%10s" "$(_format_variation ${variations_avg[i]})")
+        body+=$(printf " %9s (%8s) |" "${logsize_prv[i]}" "$(_format_variation ${logsize_prv_var[i]})")
+        body+=$(printf " %9s (%8s) |" "$(_format_float ${logsize_avg[i]})" "$(_format_variation ${logsize_avg_var[i]})")
       fi
-      body+=$(printf "  | %10s | total=%5s%s |" "${__sos_log_types[i]}" "${results[i]}" "${var2}")
+    body+="\n"
+
+    body+="- Log types repartition:\n"
+    body+=$(printf "  | %10s | %10s |" "TYPE" "Total")
+    local sep="  |------------|------------|"
+    if [ "${log_file_history_size}" -gt 0 ]; then
+      body+=$(printf " %20s | %20s |" "Previous" "Average")
+      sep+="----------------------|----------------------|"
+    fi
+    body+="\n"
+    body+="${sep}\n"
+    for i in "${!__sos_log_types[@]}"; do
+      body+=$(printf "  | %10s | %10s |" "${__sos_log_types[i]}" "${repartition[i]}")
+      if [ "${log_file_history_size}" -gt 0 ]; then
+        # Adding variations to history
+        body+=$(printf " %9s (%8s) |" "${repartition_prv[i]}" "$(_format_variation ${repartition_prv_var[i]})")
+        body+=$(printf " %9s (%8s) |" "$(_format_float ${repartition_avg[i]})" "$(_format_variation ${repartition_avg_var[i]})")
+      fi
       body+="\n"
     done
     body+="\n"
-    body+="Disk analysis results for '${disk_volume}'\n"
+    body+="Disk analysis results\n"
+    body+="- Analyzed volume: '${disk_volume}'\n"
     body+="- Used: $(_format_float "$((100 * disk_usage))")%\n"
     body+="\n"
     body+="Report sent from: $(hostname)"
