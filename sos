@@ -243,23 +243,37 @@ _get_files() {
   if [ ! -z "$4" ]; then
     offset=$4
   fi
+  local ignore=$5
   _log 0 "Retrieving files in '${folder}' for '${pattern}' (offset=${offset}, limit=${limit})"
+  files=()
   if test -n "$(find "${folder}" -maxdepth 1 -name "${pattern}" -print -quit)"; then
     local counter=0
-    find "${folder}" -name "${pattern}" -print0 | sort -zr | while read -d $'\0' file
+    while read -d $'\0' file;
     do
+      # If file is ignored: resetting and continuing
+      if [ "${file}" == "${ignore}" ]; then
+        _log 0 "Ignoring '${file}'"
+        counter=0
+        files=()
+        continue
+      fi
       counter=$((counter+1))
+      # If max reached: ignoring file and continuing
       if [ $((counter)) -gt $((offset + limit)) ]; then
-        _log 0 "Max reached (${counter}), ignoring other files"
-        break
+        _log 0 "Max reached (${counter}), ignoring"
+        continue
       fi
+      # If file within range: saving
       if [ $((counter)) -ge $((offset)) ]; then
-        echo "${file}"
+        files+=( "${file}" )
       fi
-    done
-  else
+    done < <(find "${folder}" -name "${pattern}" -print0 | sort -zr)
+  fi
+  if [ "${#files[@]}" -eq 0 ]; then
     _log 0 "No files found in '${folder}' for '${pattern}'"
     echo ""
+  else
+    echo "${files[*]}"
   fi
 }
 
@@ -294,10 +308,11 @@ _get_log_file_history() {
   local folder=$2
   local limit=$3
   local offset=$4
+  local ignore=$5
   _log 0 "Retrieving pattern '${pattern}' from log files history in '${folder}'"
   local search
   search=$(echo "${pattern}" | sed -r "s/%date/*/g")
-  local files=( $(_get_files "${search}" "${folder}" "${limit}" "${offset}") )
+  local files=( $(_get_files "${search}" "${folder}" "${limit}" "${offset}" "${ignore}") )
   local filtered_files=()
   for file in ${files[*]}; do
     if [ "${file}" != "${__sos_log_file}" ]; then
@@ -768,7 +783,7 @@ check() {
   _log 1 "Log file contains ${logsize} number of lines"
 
   # Analyzing log history
-  local log_file_history=( $(_get_log_file_history "${log_file_pattern}" "${log_folder}" "${log_file_history_limit}" "${log_file_history_offset}") )
+  local log_file_history=( $(_get_log_file_history "${log_file_pattern}" "${log_folder}" "${log_file_history_limit}" "${log_file_history_offset}" "${__sos_log_file}") )
   local log_file_history_size=${#log_file_history[@]}
   local repartition_prv=()
   local logsize_prv=0
