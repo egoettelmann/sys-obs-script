@@ -9,7 +9,7 @@
 # TODO: OPTIONAL - add http status checks
 
 __sos_script_version="0.0.3"
-__sos_update_url="https://github.com/egoettelmann/sys-obs-script/raw/master/sos.sh"
+__sos_update_url="https://github.com/egoettelmann/sys-obs-script/raw/master/sos"
 
 # Defining current folder
 __sos_current_dir="$( dirname -- "$0"; )"
