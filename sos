@@ -206,6 +206,11 @@ _get_config() {
 # Disk usage management methods
 ############################################################################
 
+# Retrieves the used % of disk space for the provided volume.
+#
+# $1 - the volume to check
+#
+# Returns the used % of disk space
 _disk_usage() {
   local volume=$1
   local usage
@@ -319,7 +324,11 @@ _count_occurrences_in_file() {
   local file=$2
   _log 0 "Counting occurrences of pattern '${pattern}' in '${file}'"
   local count
-  count=$(grep -c "${pattern}" "${file}")
+  if [[ $file != *.gz ]]; then
+    count=$(grep -c "${pattern}" "${file}")
+  else
+    count=$(zgrep -c "${pattern}" "${file}")
+  fi
   echo "${count}"
 }
 
@@ -331,10 +340,19 @@ _count_occurrences_in_file() {
 _count_lines_in_file() {
   local file=$1
   local count
-  count=$(grep -c ^ "${file}")
+  if [[ $file != *.gz ]]; then
+    count=$(grep -c ^ "${file}")
+  else
+    count=$(zgrep -c ^ "${file}")
+  fi
   echo "${count}"
 }
 
+# Counts the average number of lines in a list of files.
+#
+# $1 - the files to lookup
+#
+# Returns the average number of lines (x100 for the precision).
 _count_avg_lines_in_files() {
   local files=($@)
   _log 0 "Counting average lines in history of '${#files[@]}' files"
