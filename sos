@@ -561,24 +561,39 @@ _notification_level_exceeded() {
 # Returns 0 if notification has been sent successfully, 1 otherwise
 _send_notification() {
   local subject=$1
-  local body=$2
+  local content=$2
   if [ -z "${__sos_mail_receiver}" ] || [ "${__sos_mail_pretend}" -eq "1" ]; then
     _log 1 "Pretending to send notification to '${__sos_mail_receiver}'"
     _log 2 "------------------------------------"
     _log 2 "${subject}"
     _log 2 "---"
-    _log 2 "${body}"
+    _log 2 "${content}"
     _log 2 "------------------------------------"
     echo 1
     return
   fi
+  local header=""
+  header+="From: <${__sos_mail_sender}>\r\n"
+  header+="To: <${__sos_mail_receiver}>\r\n"
+  header+="Subject: ${subject}\r\n"
+  header+="Date: $(date -R)\r\n"
+  header+="MIME-Version: 1.0\r\n"
+  header+="Content-Type: text/html\r\n"
+  header+="Content-Disposition: inline\r\n"
+  header+="\r\n"
+  local body=""
+  body+="<html><body>\r\n"
+  body+="<pre style=\"font: monospace\">\r\n"
+  body+="${content}\r\n"
+  body+="</pre>"
+  body+="</body></html>"
   local response
   response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
       --url "${__sos_mail_endpoint}" \
       --mail-from "${__sos_mail_sender}" \
       --mail-rcpt "${__sos_mail_receiver}" \
       --user "${__sos_mail_username}:${__sos_mail_password}" \
-      -T <(echo -e "From: <${__sos_mail_sender}>\r\nTo: <${__sos_mail_receiver}>\r\nSubject: ${subject}\r\nDate: $(date -R)\r\n\r\n${body}"))
+      -T <(echo -e "${header}${body}"))
   local response_body
   response_body=$(echo "${response}" | sed -e 's/HTTPSTATUS\:.*//g')
   local response_code
@@ -605,7 +620,7 @@ usage() {
   echo "where [command]:" >&2
   echo "   help                displays this help message" >&2
   echo "   version             displays the version number of the script" >&2
-  #echo "   update              updates the script to the latest version" >&2
+  echo "   update              updates the script to the latest version" >&2
   #echo "   status              checks if the script is registered as a cron job" >&2
   #echo "   schedule [cron]     schedules the script as a cron job, with the provided [cron] expression" >&2
   echo "   check [--options]   default - runs the entire system observability check, with following [--options]:" >&2
