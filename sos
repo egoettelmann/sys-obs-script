@@ -674,12 +674,13 @@ update() {
     exit 1
   fi
   # Aligning permissions to temp file before rename
-  chmod "$( stat -f '%p' "${target_file}" )" "${tmp_file}"
   if stat -c '%U:%G' "${target_file}" >/dev/null 2>&1 ; then
     # Using GNU stat
+    chmod "$( stat -c '%a' "${target_file}" )" "${tmp_file}"
     chown "$( stat -c '%U:%G' "${target_file}" )" "${tmp_file}"
   else
     # Using BSD stat
+    chmod "$( stat -f '%p' "${target_file}" )" "${tmp_file}"
     chown "$( stat -f '%Su:%Sg' "${target_file}" )" "${tmp_file}"
   fi
   mv "${tmp_file}" "${target_file}"
