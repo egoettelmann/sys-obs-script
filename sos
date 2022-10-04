@@ -246,7 +246,7 @@ _get_files() {
   local ignore=$5
   _log 0 "Retrieving files in '${folder}' for '${pattern}' (offset=${offset}, limit=${limit})"
   files=()
-  if test -n "$(find "${folder}" -maxdepth 1 -name "${pattern}" -print -quit)"; then
+  if test -n "$(find -L "${folder}" -maxdepth 1 -name "${pattern}" -print -quit)"; then
     local counter=0
     while read -d $'\0' file;
     do
@@ -267,7 +267,7 @@ _get_files() {
       if [ $((counter)) -ge $((offset)) ]; then
         files+=( "${file}" )
       fi
-    done < <(find "${folder}" -name "${pattern}" -print0 | sort -zr)
+    done < <(find -L "${folder}" -name "${pattern}" -print0 | sort -zr)
   fi
   if [ "${#files[@]}" -eq 0 ]; then
     _log 0 "No files found in '${folder}' for '${pattern}'"
