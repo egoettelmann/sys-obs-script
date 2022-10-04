@@ -8,7 +8,7 @@
 # TODO: OPTIONAL - add disk space check
 # TODO: OPTIONAL - add http status checks
 
-__sos_script_version="0.0.4"
+__sos_script_version="0.0.5"
 __sos_update_url="https://github.com/egoettelmann/sys-obs-script/raw/master/sos"
 
 # Defining current folder
