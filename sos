@@ -1,11 +1,7 @@
 #!/bin/bash
 
-# TODO: add support for email templates (including HTML, see https://gist.github.com/EricTendian/464a44a5874f985654d79609fd4885f8)
-# TODO: check following project for templating https://github.com/nextrevision/sempl
-# TODO: add 'update' command to retrieve latest version of script
 # TODO: add 'status' command to retrieve status of cron scheduling registration
 # TODO: add 'schedule' command to register cron job for script
-# TODO: OPTIONAL - add disk space check
 # TODO: OPTIONAL - add http status checks
 
 __sos_script_version="0.0.5"
